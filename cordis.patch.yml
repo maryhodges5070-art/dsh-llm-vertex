@@ -1,0 +1,12 @@
+# Vertex AI provider for DeepSeek Harness
+#
+# projectId, location and credentialPath are normally set from the
+# "Vertex AI" settings page, which writes them back through configEditor.
+# Left empty they fall back to:
+#   - project: the credential's quota_project_id, then `gcloud config get-value project`
+#   - credential: GOOGLE_APPLICATION_CREDENTIALS, then the gcloud ADC file
+- insert:
+    - id: llm-vertex
+      name: dsh-llm-vertex
+      config:
+        location: global

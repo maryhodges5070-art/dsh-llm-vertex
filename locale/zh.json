@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Vertex AI（Gemini）",
+    "description": "通过 Google Cloud 凭证 JSON（gcloud ADC 或服务账号密钥）接入 Vertex AI 上的 Gemini 模型。"
+  }
+}

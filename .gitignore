@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Local credentials — never commit these
+.env
+.env.*
+**/*credentials*.json
+**/*service-account*.json
+**/application_default_credentials.json
+
+# Runtime state written by the plugin
+thought-signatures.json
+**/thought-signatures.json
+
+# Logs and OS noise
+*.log
+.DS_Store
+Thumbs.db

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Vertex AI (Gemini)",
+    "description": "Google Cloud Vertex AI provider route for Gemini models, authenticated with a Google Cloud credential JSON file (gcloud ADC or service account key)."
+  }
+}
