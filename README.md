@@ -9,6 +9,7 @@ Harness 自带的兼容层只认静态 API Key，而 Vertex AI 需要 OAuth2 Bea
 - **认证**：gcloud ADC（`authorized_user`）刷新令牌，或 Service Account JSON（本地 RS256 签 JWT 换 token）；token 内存缓存，过期前 5 分钟刷新。
 - **流式对话**：调用 `publishers/google/models/{model}:streamGenerateContent?alt=sse`，把 SSE 翻译成 Harness 的 `StreamChunk`（text / reasoning / tool-call / usage / finish）。
 - **工具调用**：工具定义投影成 `functionDeclarations`（schema 白名单清洗），`functionResponse` 回传；Gemini 3/4 要求回传的 `thoughtSignature` 按 `sessionId + toolCallId` 落盘保存，避免多轮工具调用 400。
+- **图片输入**：Gemini 3/4 全程多模态。用户消息里的图片与工具返回的截图会经 attachments 服务读成 inline base64（长边压到 2048px、单张上限 4MB），以 `inlineData` part 发送；工具返回的图片另起一个 user 轮，避免和 `functionResponse` 混在同一轮。
 - **设置页**：Harness 设置里独立的「Vertex AI」页，可看状态、改 project / location / 凭证路径 / 代理、测试连接、拉取可用模型并逐个测速。
 - **强制限流**：进程级滑动窗口（默认 60 请求/分钟）+ 并发上限（默认 4），FIFO 排队、可取消。
 - **显式代理**：支持 `http://`、`https://`、`socks5://`、`socks5h://`，本地代理或 VPS 均可，不需要 TUN 模式；代理凭据只在本机使用，接口返回时遮蔽为 `kind://host:port (auth)`。
@@ -135,6 +136,7 @@ dsh plugin add /absolute/path/to/dsh-llm-vertex
 - 模型可用性取决于项目与区域：本插件在测试账号上观察到部分 2.5 系列模型返回 404（发布方模型已下架），Gemini 3 系列只在 `global` 可用。请用设置页的「获取可用模型」以目录为准。
 - Gemini 3/4 的工具调用必须回传 `thoughtSignature`；签名落盘后跨进程仍可复用，但清空 `thought-signatures.json` 会让进行中的工具轮次失效。
 - 只支持 Gemini 发布方模型，不支持 Vertex 上的 Claude / Llama 等第三方发布方。
+- 图片以 base64 内联发送：单张压到长边 2048px / 4MB 以内，但多张图片仍会显著增大请求体与计费 token；历史里被 offload 的旧图不会重新发送。
 - 冷启动：长时间未调用的模型（实测 gemini-4-carbon 直连约 72s 才回响应头）可能先排队再输出。响应头预算与流式空闲预算分开计算，必要时调大 `firstByteTimeoutMs`；同一模型经代理时可能更慢。
 
 ## 开发

@@ -14,6 +14,21 @@ import { parseProxyUrl } from './lib/transport.js';
 /** Provider route registered by this plugin. */
 const PROVIDER = 'vertex';
 
+/** Gemini routes accept text and images unless a model opts out. */
+const DEFAULT_MODALITIES = Object.freeze(['text', 'image']);
+
+/**
+ * Normalize a per-model `input` modality list.
+ *
+ * @param {unknown} raw - configured `input` value.
+ * @returns {string[]} a de-duplicated subset of `text` / `image`.
+ */
+function normalizeModalities(raw) {
+  if (!Array.isArray(raw)) return [...DEFAULT_MODALITIES];
+  const picked = raw.filter((entry) => entry === 'text' || entry === 'image');
+  return picked.length > 0 ? [...new Set(picked)] : [...DEFAULT_MODALITIES];
+}
+
 /** Plugin name shown by the Loader and Plugin Manager. */
 export const name = 'llm-vertex';
 
@@ -50,12 +65,14 @@ export function normalizeConfig(raw, logger) {
           name: typeof model.name === 'string' && model.name.length > 0 ? model.name : String(model.id),
           contextWindow: Math.min(positiveInt(model.contextWindow, 1_048_576), contextWindow),
           maxTokens: positiveInt(model.maxTokens, 65_536),
+          input: normalizeModalities(model.input),
           ...(typeof model.description === 'string' && model.description.length > 0
             ? { description: model.description }
             : {}),
         }))
     : DEFAULTS.models.map((model) => ({
         ...model,
+        input: model.input ?? DEFAULT_MODALITIES,
         contextWindow: Math.min(model.contextWindow, contextWindow),
       }));
   return {
@@ -163,10 +180,22 @@ export class VertexAdapter {
   }
 
   /**
-   * @returns {undefined} no image request target.
+   * Gemini accepts inline image parts up to its request budget.
+   *
+   * @param {string} _provider - route id.
+   * @param {string} _model - model id.
+   * @param {any} image - the attachment reference being sent.
+   * @returns {{width: number, height: number, maxBytes: number}} request target.
    */
-  imageRequestTarget() {
-    return undefined;
+  imageRequestTarget(_provider, _model, image) {
+    const width = positiveInt(image?.width, 1_024);
+    const height = positiveInt(image?.height, 1_024);
+    const scale = Math.min(1, 2_048 / Math.max(width, height));
+    return {
+      width: Math.max(1, Math.round(width * scale)),
+      height: Math.max(1, Math.round(height * scale)),
+      maxBytes: 4_000_000,
+    };
   }
 
   /**
@@ -181,7 +210,7 @@ export class VertexAdapter {
         id: model.id,
         name: model.name,
         ...(model.description === undefined ? {} : { description: model.description }),
-        inputModalities: ['text'],
+        inputModalities: model.input,
       })),
     );
   }
@@ -205,7 +234,7 @@ export class VertexAdapter {
       id: model,
       name: known?.name ?? model,
       ...(known?.description === undefined ? {} : { description: known.description }),
-      inputModalities: ['text'],
+      inputModalities: known?.input ?? [...DEFAULT_MODALITIES],
       context: { contextWindow },
       defaultMaxTokens: maxTokens,
     });
@@ -233,7 +262,7 @@ export class VertexAdapter {
     let emitted = false;
     for (let attempt = 1; attempt <= 2; attempt += 1) {
       try {
-        for await (const chunk of streamVertex(this.config, options, this.logger, attempt)) {
+        for await (const chunk of streamVertex(this.config, options, this.logger, attempt, this.attachments)) {
           emitted = true;
           yield chunk;
         }
@@ -278,6 +307,8 @@ export async function describeTarget(config) {
 export function apply(ctx, rawConfig) {
   const config = normalizeConfig(rawConfig, ctx.logger);
   const adapter = new VertexAdapter(config, ctx.logger);
+  // The attachment store mounts at its own time; resolve it lazily per call.
+  adapter.attachments = () => ctx.get('attachments');
 
   // Clear in-memory OAuth tokens when the plugin is unloaded/reloaded.
   if (typeof ctx.on === 'function') {
